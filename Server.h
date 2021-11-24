@@ -21,6 +21,7 @@
 #define LISTENQ  1024  /* second argument to listen() */
 #define HTTP "http://%[^/]"
 #define NETPORT 80
+#define HOST "\r\nHOST: %s\r\n"
 
 
 struct ParsedURL {
@@ -93,7 +94,6 @@ public:
         std::cout << "Executing Data UpStream." << std::endl;
         size_t read_bytes;
         char ClientReq[MAXBUF];
-        memset(ClientReq, 0, MAXBUF);
         while ((read_bytes = read(connfd, ClientReq, MAXBUF)) > 0) {
             /* handle error */
             if (read_bytes < 0) {
@@ -131,66 +131,59 @@ public:
                 handle400error(connfd);
             }
 
+            std::cout << "Request Host: " << hostname << std::endl;
             struct hostent *ServerHost = gethostbyname(hostname);
 
-            if (ServerHost == NULL) {
-                std::cout << "Hostname is wrong or missing" << std::endl;
-                handle400error(connfd);
-            }
+            in_addr* address = (in_addr*) ServerHost->h_addr;
+            std::string ip_address = inet_ntoa(* address);
+
+            std::cout << "Resolved IP: " << "(" << ip_address << ")" << std::endl;
 
             struct sockaddr_in r_addr;
-            int r_sock = socket(AF_INET, SOCK_STREAM, 0);
-            memcpy(&r_addr.sin_addr, ServerHost->h_addr, ServerHost->h_length);
+            bzero((char *) &r_addr, sizeof(r_addr));
+            bcopy((char* ) ServerHost->h_addr,
+                  (char* ) &r_addr.sin_addr.s_addr, ServerHost->h_length);
             r_addr.sin_family = AF_INET;
             r_addr.sin_port = htons(80);
 
-            int serverconnfd = connect(r_sock, (struct sockaddr *) &r_addr, sizeof(r_addr));
+            int r_sock = socket(AF_INET, SOCK_STREAM, 0);
 
-
-            int error = 0;
-            socklen_t len = sizeof (error);
-            int retval = getsockopt (serverconnfd, SOL_SOCKET, SO_ERROR, &error, &len);
-
-            if (retval != 0) {
-                /* there was a problem getting the error code */
-                fprintf(stderr, "error getting socket error code: %s\n", strerror(retval));
+            if((connect(r_sock, (struct sockaddr *) &r_addr, sizeof(r_addr))) < 0){
+                std::cout << "Socket Connect Fail" << std::endl;
                 handle500error(connfd);
             }
+            char hostBuf[MAXBUF];
+            sprintf(hostBuf, HOST, hostname);
+            strcat(ClientReq, hostBuf);
 
-            if (error != 0) {
-                /* socket has a non zero error status */
-                fprintf(stderr, "socket error: %s\n", strerror(error));
-                handle500error(connfd);
-            }
+            std::cout << "Attaching host... \n" << ClientReq << std::endl;
 
-            if (serverconnfd < 0) {
-                std::cout << "Server failed to connect socket" << std::endl;
-                handle500error(connfd);
-            }
+            size_t bytesSent = write(r_sock, ClientReq, strlen(ClientReq));
 
-            std::cout << "Request Host: " << hostname << std::endl;
-            std::cout << "Request Info: " << ClientReq << std::endl;
-
-            size_t bytesSent = send(serverconnfd, ClientReq, strlen(ClientReq), 0);
             if (bytesSent < 0) {
                 std::cout << "Failed to write req to server" << std::endl;
                 handle400error(connfd);
             }
             size_t bytesRead;
-            char responseFromProxy[10001];
-            responseFromProxy[10000] = '\0';
-
+            char responseFromProxy[1024];
             do{
-                char responseFromProxy[1024];
-                bytesRead = recv(serverconnfd, responseFromProxy, sizeof(responseFromProxy) - 1, 0);
+                bytesRead = read(r_sock, responseFromProxy, sizeof(responseFromProxy) - 1);
                 if(bytesRead < 0){
-                    std::cout << "Failed to send response to client:\n" << responseFromProxy << std::endl;
+                    std::cout << "Failed to read response from web:\n" << responseFromProxy << std::endl;
                     handle400error(connfd);
                 }
                 responseFromProxy[bytesRead] = 0;
+                bytesSent = write(connfd, responseFromProxy, bytesRead);
+                if(bytesSent < 0){
+                    std::cout << "Failed to send response to client:\n" << responseFromProxy << std::endl;
+                    handle400error(connfd);
+                }
+                bzero(responseFromProxy, strlen(responseFromProxy));
 
             }while(bytesRead > 0);
 
+            bzero(ClientReq, strlen(ClientReq));
+            bzero(hostBuf, strlen(hostBuf));
         }
 
         return nullptr;
