@@ -1,0 +1,32 @@
+#IncludeRegexLine: ^[ 	]*[#%][ 	]*(include|import)[ 	]*[<"]([^">]+)([">])
+
+#IncludeRegexScan: ^.*$
+
+#IncludeRegexComplain: ^$
+
+#IncludeRegexTransform: 
+
+/Users/yuriymikhaildi/Desktop/proxy/Server.h
+unistd.h
+-
+sys/socket.h
+-
+netdb.h
+-
+netinet/in.h
+-
+arpa/inet.h
+-
+pthread.h
+-
+dirent.h
+-
+fcntl.h
+-
+
+/Users/yuriymikhaildi/Desktop/proxy/main.cpp
+iostream
+-
+Server.h
+/Users/yuriymikhaildi/Desktop/proxy/Server.h
+
