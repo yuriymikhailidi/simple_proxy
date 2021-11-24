@@ -134,31 +134,49 @@ public:
             std::cout << "Request Host: " << hostname << std::endl;
             struct hostent *ServerHost = gethostbyname(hostname);
 
-            in_addr* address = (in_addr*) ServerHost->h_addr;
-            std::string ip_address = inet_ntoa(* address);
+            in_addr *address = (in_addr *) ServerHost->h_addr;
+            std::string ip_address = inet_ntoa(*address);
 
             std::cout << "Resolved IP: " << "(" << ip_address << ")" << std::endl;
 
             struct sockaddr_in r_addr;
             bzero((char *) &r_addr, sizeof(r_addr));
-            bcopy((char* ) ServerHost->h_addr,
-                  (char* ) &r_addr.sin_addr.s_addr, ServerHost->h_length);
+            bcopy((char *) ServerHost->h_addr,
+                  (char *) &r_addr.sin_addr.s_addr, ServerHost->h_length);
             r_addr.sin_family = AF_INET;
             r_addr.sin_port = htons(80);
 
             int r_sock = socket(AF_INET, SOCK_STREAM, 0);
 
-            if((connect(r_sock, (struct sockaddr *) &r_addr, sizeof(r_addr))) < 0){
+            if ((connect(r_sock, (struct sockaddr *) &r_addr, sizeof(r_addr))) < 0) {
                 std::cout << "Socket Connect Fail" << std::endl;
                 handle500error(connfd);
             }
-            char hostBuf[MAXBUF];
-            sprintf(hostBuf, HOST, hostname);
-            strcat(ClientReq, hostBuf);
 
             std::cout << "Attaching host... \n" << ClientReq << std::endl;
 
-            size_t bytesSent = write(r_sock, ClientReq, strlen(ClientReq));
+            size_t bytesSent;
+
+            if (!clientType) {
+                std::cout << "Telnet" << std::endl;
+                char hostBuf[MAXBUF];
+                sprintf(hostBuf, HOST, hostname);
+                strcat(ClientReq, hostBuf);
+                bytesSent = send(r_sock, ClientReq, strlen(ClientReq), 0);
+                if (bytesSent < 0) {
+                    std::cout << "Failed to write req to server" << std::endl;
+                    handle400error(connfd);
+                }
+                bzero(hostBuf, strlen(hostBuf));
+
+            } else {
+                std::cout << "Browser" << std::endl;
+                bytesSent = send(r_sock, ClientReq, strlen(ClientReq), 0);
+                if (bytesSent < 0) {
+                    std::cout << "Failed to write req to server" << std::endl;
+                    handle400error(connfd);
+                }
+            }
 
             if (bytesSent < 0) {
                 std::cout << "Failed to write req to server" << std::endl;
@@ -166,24 +184,23 @@ public:
             }
             size_t bytesRead;
             char responseFromProxy[1024];
-            do{
+            do {
                 bytesRead = read(r_sock, responseFromProxy, sizeof(responseFromProxy) - 1);
-                if(bytesRead < 0){
+                if (bytesRead < 0) {
                     std::cout << "Failed to read response from web:\n" << responseFromProxy << std::endl;
                     handle400error(connfd);
                 }
                 responseFromProxy[bytesRead] = 0;
                 bytesSent = write(connfd, responseFromProxy, bytesRead);
-                if(bytesSent < 0){
+                if (bytesSent < 0) {
                     std::cout << "Failed to send response to client:\n" << responseFromProxy << std::endl;
                     handle400error(connfd);
                 }
                 bzero(responseFromProxy, strlen(responseFromProxy));
 
-            }while(bytesRead > 0);
+            } while (bytesRead > 0);
 
             bzero(ClientReq, strlen(ClientReq));
-            bzero(hostBuf, strlen(hostBuf));
         }
 
         return nullptr;
